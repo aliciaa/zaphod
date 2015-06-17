@@ -172,7 +172,7 @@ public class TextClassifier{
       random_list = new HashSet<String>();
       Path random_path = Paths.get("./essaylegitlist.txt");
       try(BufferedReader reader = Files.newBufferedReader(random_path)){
-          while((line=reader.readLind())!=null){
+          while((line=reader.readLine())!=null){
 	      random_list.add(line);
 	  }
       } catch(IOException x){
@@ -181,8 +181,8 @@ public class TextClassifier{
     }
 
     public void DoTheWork(String[] args){
-	String train_file_name = "essay_bf_svmclassifyg31.dat";
-	String classify_file_name = "essay_bf_svmclassifyg31.dat";
+	String train_file_name = "essay_ab_svmtraing35.dat";
+	String classify_file_name = "essay_ab_svmclassifyg35.dat";
         LoadRandomList();
 	props = new Properties();
         props.setProperty("annotators", "tokenize, ssplit");
@@ -251,25 +251,25 @@ public class TextClassifier{
 		    //if(((ind>133) && (ind<201)) || (ind>633)){
 
                     //5-fold for within topic essay test
-                    if(((ind>199)&&(ind<280)) ||((ind>699) && (ind<780))){
-		    //if((((ind>199)&&(ind<260))||((ind>279)&&(ind<300))
-		    //    ||(((ind>699)&&(ind<760))||(ind>779)&&(ind<800)))){
-		    //if((((ind>199)&&(ind<240))||((ind>259)&&(ind<300)))
-		    //    ||(((ind>699)&&(ind<740))||((ind>759)&&(ind<800)))){
-		    //if((((ind>199)&&(ind<220))||((ind>239)&&(ind<300)))
-		    //    ||(((ind>699)&&(ind<720))||((ind>739)&&(ind<800)))){
-		    //if(((ind>219)&&(ind<300)) || ((ind>719)&&(ind<800))){
+                    //if((ind<80) ||((ind>499) && (ind<580))){
+		    //if(((ind<60)||((ind>79)&&(ind<100))
+		    //    ||(((ind>499)&&(ind<560))||(ind>579)&&(ind<600)))){
+		    //if(((ind<40)||((ind>59)&&(ind<100)))
+		    //    ||(((ind>499)&&(ind<540))||((ind>559)&&(ind<600)))){
+		    //if(((ind<20)||((ind>39)&&(ind<100)))
+		    //    ||(((ind>499)&&(ind<520))||((ind>539)&&(ind<600)))){
+		    if(((ind>19)&&(ind<100)) || ((ind>519)&&(ind<600))){
                        //this is the training data
 		       ParseFileGram(reader, svmtfile, is_phishing);
                        //ParseFileTree(reader, svmtfile, is_phishing);
                     } else {
                        //this is the testing data
 
-		       if(((ind>279) && (ind<300)) || ((ind>779)&&(ind<800))){
-		       //if(((ind>259)&&(ind<280)) || ((ind>759)&&(ind<780))){
-		       //if(((ind>239)&&(ind<260))||((ind>739)&&(ind<760))){
-		       //if(((ind>219)&&(ind<240))||((ind>719)&&(ind<740))){
-		       //if(((ind>199)&&(ind<220))||((ind>699)&&(ind<720))){
+		       //if(((ind>79) && (ind<100)) || ((ind>579)&&(ind<600))){
+		       //if(((ind>59)&&(ind<80)) || ((ind>559)&&(ind<580))){
+		       //if(((ind>39)&&(ind<60))||((ind>539)&&(ind<560))){
+		       //if(((ind>19)&&(ind<40))||((ind>519)&&(ind<540))){
+		       if((ind<20)||((ind>499)&&(ind<520))){
                         ParseFileGram(reader, svmcfile, is_phishing);
 			//ParseFileTree(reader, svmcfile, is_phishing);
 		       }

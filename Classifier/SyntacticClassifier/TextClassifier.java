@@ -22,22 +22,25 @@ import edu.stanford.nlp.parser.lexparser.LexicalizedParser;
 
 public class TextClassifier{
     //set up n-gram
-    public static final int NUMBER_GRAM = 3;
+    public static final int NUMBER_GRAM = 2;
     public static final int PARSE_BY_GRAM = 0;
     public static final int PARSE_BY_TREE = 1;
-    public static final int PARSE_METHOD = PARSE_BY_GRAM;
+    //public static final int PARSE_METHOD = PARSE_BY_GRAM;
+    public static final int PARSE_METHOD = PARSE_BY_TREE;
 
     public Properties props;
     public StanfordCoreNLP pipeline;
     public Charset charset;
     public HashSet<String> random_list;
-
+    public int total_doc;
     // map feature -> feature_index;
     public Map<String, Integer> global_feature_index;
 
     // map feature -> number of docs that has the feature
     public Map<String, Integer> global_idf_index;
 
+    // map doc index -> length of the doc;
+    public Map<Integer, Integer> global_doc_length;
     public String wFileName;
     public String[] grams;
     public String entire_gram;
@@ -129,44 +132,74 @@ public class TextClassifier{
       }
     }
 
+    public void AssembleFeatureFromTree(Tree parse, Map<String, Integer> feature_freq_dict){
+	String feature = parse.value() + "->";
+	Tree[] sub_tree = parse.children();
+	for(Tree t: sub_tree){
+	    if(!t.isPreTerminal()){
+		AssembleFeatureFromTree(t, feature_freq_dict);
+            }
+	    feature+=t.value() + "+";
+	}
+	if(feature_freq_dict.containsKey(feature)){
+	    feature_freq_dict.put(feature, feature_freq_dict.get(feature)+1);
+	} else {
+	    feature_freq_dict.put(feature, 1);
+	}
+	    
+    }
+
     public void parseSentenceByTree(
         CoreMap sentence,
 	Map<String, Integer> feature_freq_dict) {
       // function stub for parse by tree
-      return; 
+        ArrayList<String> token_vec = new ArrayList<String>();
+	for(CoreLabel token: sentence.get(TokensAnnotation.class)){
+	    String word = token.get(TextAnnotation.class);
+	    word = word.toLowerCase();
+	    token_vec.add(word);
+	}
+
+	String[] sent = new String[token_vec.size()];
+	sent = token_vec.toArray(sent);
+	TokenizerFactory<CoreLabel> tokenizerFactory = PTBTokenizer.factory(new CoreLabelTokenFactory(), "");
+	List<CoreLabel> rawWords = Sentence.toCoreLabelList(sent);
+	Tree parse = lp.apply(rawWords);
+
+	AssembleFeatureFromTree(parse, feature_freq_dict);
     }
 
     public void parseSentenceByGram(
         CoreMap sentence,
         Map<String, Integer> feature_freq_dict) {
-      int counter = 0;
-      for(CoreLabel token: sentence.get(TokensAnnotation.class)){
-        String word = token.get(TextAnnotation.class);
-        //check if the word in the global dictionary
-        word = word.toLowerCase();
-        //for test purpose
-        //System.out.println(word + " is added");
-        counter = counter + 1;
-        if (counter < NUMBER_GRAM) {
-          grams[counter] = word;
-          continue;
-        } else {
-          entire_gram = "";
-          for(int j=0;j<NUMBER_GRAM-1;j++) {
-            grams[j] = grams[j+1];
-            entire_gram += grams[j];
-          }
-          grams[NUMBER_GRAM-1] = word;
-          entire_gram += word;
+            int counter = 0;
+            for(CoreLabel token: sentence.get(TokensAnnotation.class)){
+                String word = token.get(TextAnnotation.class);
+                //check if the word in the global dictionary
+                word = word.toLowerCase();
+                //for test purpose
+                //System.out.println(word + " is added");
+                counter = counter + 1;
+                if (counter < NUMBER_GRAM) {
+                grams[counter] = word;
+                continue;
+            } else {
+                entire_gram = "";
+                for(int j=0;j<NUMBER_GRAM-1;j++) {
+                    grams[j] = grams[j+1];
+                    entire_gram += grams[j];
+                }
+                grams[NUMBER_GRAM-1] = word;
+                entire_gram += word;
+            }
+            //Put the gram into dictionary,
+            //The gram corresponds to an integer in the dictionary
+            if(feature_freq_dict.containsKey(entire_gram)){
+                feature_freq_dict.put(entire_gram, feature_freq_dict.get(entire_gram)+1);
+            } else {
+                feature_freq_dict.put(entire_gram, 1);
+            }
         }
-        //Put the gram into dictionary,
-        //The gram corresponds to an integer in the dictionary
-        if(feature_freq_dict.containsKey(entire_gram)){
-          feature_freq_dict.put(entire_gram, feature_freq_dict.get(entire_gram));
-        } else {
-          feature_freq_dict.put(entire_gram, 1);
-        }
-      }
     }
 
     public Map<String, Integer> FileParser(
@@ -180,7 +213,11 @@ public class TextClassifier{
         ) throws Exception {
       Map<String, Integer> feature_freq_dict = new HashMap<String, Integer>();
       String line;
-      while(((line = reader.readLine()) != null) & (line.length() > 0 )) {
+      if (reader == null) {
+	      System.out.println("ERR!!Nothing to be read!!");
+	      System.exit(-1);
+      }
+      while(((line = reader.readLine()) != null) && (line.length() > 0 )) {
         Annotation document = new Annotation(line);
 	pipeline.annotate(document);
 	List<CoreMap> sentences = document.get(SentencesAnnotation.class);
@@ -197,6 +234,8 @@ public class TextClassifier{
         // Write output to file here
 	BufferedWriter svmwriter = new BufferedWriter(new FileWriter(file_to_write.getName(), true));
 	svmwriter.write(tag + " ");
+	int local_doc_length = 0;
+	TreeMap<Integer, Double> local_feature_map = new TreeMap<>();
         for(String feature: feature_freq_dict.keySet()) {
           // feature number;
           int fn = global_feature_index.get(feature);
@@ -204,16 +243,21 @@ public class TextClassifier{
           double local_freq = (double)feature_freq_dict.get(feature);
           // number of docs with this feature;
           double doc_freq = (double)global_idf_index.get(feature);
-          svmwriter.write(fn + ":1 ");
+	  double tfidf = (local_freq/global_doc_length.get(i)) * Math.log(total_doc/doc_freq);
+	  local_feature_map.put(fn, tfidf);
+	}
+	for(Integer fn : local_feature_map.keySet()) {
+          svmwriter.write(fn + ":" + local_feature_map.get(fn) + " ");
         }
-	svmwriter.write("\t # "+ wFileName);
+	svmwriter.write("\t # "+ wFileName + "\n");
+	svmwriter.close();
       }
       return feature_freq_dict;
     }
 
     public void DoTheWork(String[] args){
-	String train_file_name = "essay_bf_svmtraing35.dat";
-	String classify_file_name = "essay_bf_svmclassifyg35.dat";
+	String train_file_name = "essay_bf_svmtraint5.dat";
+	String classify_file_name = "essay_bf_svmclassifyt5.dat";
         LoadRandomList();
 	props = new Properties();
         props.setProperty("annotators", "tokenize, ssplit");
@@ -229,6 +273,7 @@ public class TextClassifier{
         //int counter = 1;
 	global_feature_index = new HashMap<String, Integer>();
 	global_idf_index = new HashMap<String, Integer>();
+	global_doc_length = new HashMap<Integer, Integer>();
         grams = new String[NUMBER_GRAM];
         entire_gram = "";
         String parserModel = "edu/stanford/nlp/models/lexparser/englishPCFG.ser.gz";
@@ -255,13 +300,12 @@ public class TextClassifier{
 	} catch(Exception x){
 	    x.printStackTrace();
 	}
-	
+        
+	total_doc = listOfFiles.length;
 	// The first round of parseing all files to build the tf-idf index
         for(int i=0; i<listOfFiles.length; i++){
 	  wFileName = listOfFiles[i].getName();
 	  Path srcfilepath = Paths.get(rpath+wFileName);
-	  //for test purpose
-	  //System.out.println("***" + wFileName);
 	  try {
             BufferedReader reader = Files.newBufferedReader(srcfilepath, charset);
             int ind = Integer.parseInt(wFileName);
@@ -273,8 +317,10 @@ public class TextClassifier{
 		       wFileName, // write File Name
 		       null,
                        0);
-            // Build global feature index here
+            // Build global feature index here 
+	    int local_doc_length = 0;
             for(String feature : feature_freq_dict.keySet()) {
+              local_doc_length += feature_freq_dict.get(feature);
               if (!global_feature_index.containsKey(feature)) {
                 global_feature_index.put(feature, global_feature_index.size() + 1);
               }
@@ -284,8 +330,11 @@ public class TextClassifier{
                 global_idf_index.put(feature, global_idf_index.get(feature) + 1);
               }
             }
+	    global_doc_length.put(i, local_doc_length);
+	    reader.close();
 	  } catch(Exception x) {
-          System.err.format("Exception: %s%n", x);
+             System.err.format("Exception: %s%n", x);
+	     x.printStackTrace();
 	  }
 	}
         // The second parse of all files generates the svm output
@@ -316,7 +365,7 @@ public class TextClassifier{
                         //this is the training data
 	               FileParser(i, // fileIndex,
 	                   reader, // fileREader,
-		           false,  // Is Building output
+		           true,  // Is Building output
 		           PARSE_METHOD,  // parse_method
 		           wFileName, // write File Name
 			   svm_t_file,
@@ -331,23 +380,22 @@ public class TextClassifier{
 		       if(((ind>199)&&(ind<220))||((ind>699)&&(ind<720))){
 	                 FileParser(i, // fileIndex,
 	                     reader, // fileREader,
-		             false,  // Is Building output
+		             true,  // Is Building output
 		             PARSE_METHOD,  // parse_method,
 		             wFileName, // write File Name
 			     svm_c_file,
                              is_phishing);
 		       }
                     }
-
+                  reader.close();
 		} catch(Exception x){
 		    System.err.format("IOException: %s%n", x);
+		    x.printStackTrace();
 		}
 		//}
 	    }
             System.out.println(i);
 	}
-
-
     }
     
     public static void main(String[] args) {
